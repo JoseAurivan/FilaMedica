@@ -1,0 +1,65 @@
+﻿@page "/fetchdata"
+@using AtendimentoMedico.Data.AppContext
+@using AtendimentoMedico.Data
+@using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.EntityFrameworkCore
+@implements IAsyncDisposable
+
+<h1>Cadastrar Medico</h1>
+
+<EditForm Model="_medico" OnValidSubmit="ChamarPaciente">
+    <div class="form-group mb-3">
+        <label for="nome">Nome Do Médico</label>
+        <InputText @bind-Value="_medico.Nome" class="form-control"></InputText>
+        <label for="sala">Sala Que Vai Atender</label>
+        <InputText @bind-Value="_medico.Sala" class="form-control"></InputText>
+    </div>
+    <DataAnnotationsValidator/>
+    <ValidationSummary/>
+    <button class="btn-success"  type="submit">Chamar Paciente</button>
+    <button class="btn-outline-danger"  @onclick="@(() => { NavigationManager.NavigateTo("/");})">Cancelar</button>
+</EditForm>
+
+@code
+{
+    [Inject] AppDbContext AppDbContext { get; set; }
+    [Inject] NavigationManager NavigationManager { get; set; }
+    private Medico _medico = new Medico();
+    private HubConnection HubConnection;
+
+    protected override async Task OnInitializedAsync()
+    {
+        HubConnection = new HubConnectionBuilder()
+            .WithUrl(NavigationManager.ToAbsoluteUri("/serverHub"))
+            .Build();
+        
+        await HubConnection.StartAsync();
+    }
+    
+    
+    private async Task ChamarPaciente()
+    {
+        var paciente = await AppDbContext.Atendimento
+            .Where(c=> c.Atendido==false)
+            .OrderBy(c=>c.Prioridade)
+            .ToListAsync();
+        _medico.Atendimento = paciente.First();
+        _medico.Atendimento.Atendido = true;
+        await AppDbContext.Medico.AddAsync(_medico);
+        await AppDbContext.SaveChangesAsync();
+        if (IsConnected) await  SendMessage();
+        NavigationManager.NavigateTo("/");
+    }
+    
+    public bool IsConnected => HubConnection.State == HubConnectionState.Connected;
+
+    Task SendMessage() => HubConnection.SendAsync("SendMessage");
+
+    public async ValueTask DisposeAsync()
+    {
+        if (HubConnection is not null)
+        {
+            await HubConnection.DisposeAsync();
+        }
+    }
+}

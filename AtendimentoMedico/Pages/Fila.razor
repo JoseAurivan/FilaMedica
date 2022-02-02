@@ -1,0 +1,128 @@
+
+@page "/fila"
+@using AtendimentoMedico.Data.AppContext
+@using AtendimentoMedico.Data
+@using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.EntityFrameworkCore
+@implements IAsyncDisposable
+
+<h1>Chamado Atual</h1>
+<table class="table table-dark">
+    <thead>
+    <tr>
+        <td>Ordem</td>
+        <td>PACIENTE</td>
+        <td>MEDICO</td>
+        <td>SALA</td>
+    </tr>
+    </thead>
+    <tbody>
+    @if (_medico is not null)
+    {
+        var ultimo = _medico.First();
+        <tr>
+            <td>AGORA</td>
+            <td>@ultimo.Atendimento.Nome</td>
+            <td>@ultimo.Nome</td>
+            <td>@ultimo.Sala</td>
+        </tr>
+        if (_medico.Count != 1)
+        {
+            var penultimo = _medico.ElementAt(1);
+            <tr>
+                <td>ULTIMO CHAMADO</td>
+                <td>@penultimo.Atendimento.Nome</td>
+                <td>@penultimo.Nome</td>
+                <td>@penultimo.Sala</td>
+            </tr>
+        }
+    }
+    </tbody>
+</table>
+
+<h1>Fila de Espera</h1>
+<table class="table-responsive-md table-striped table ">
+    <thead>
+    <tr>
+        <td>Nome</td>
+        <td>Prioridade</td>
+    </tr>
+    </thead>
+    <tbody>
+    @if (_atendimentos != null)
+    {
+        foreach (var atendimento in _atendimentos)
+        {
+            @if (!atendimento.Atendido)
+            {
+                <tr>
+                    <td>@atendimento.Nome</td>
+                    <td>@atendimento.Prioridade</td>
+                </tr>
+            }
+
+        }
+    }
+    </tbody>
+</table>
+
+@code
+{
+    [Inject]
+    AppDbContext AppDbContext { get; set; }
+
+    [Inject]
+    NavigationManager NavigationManager { get; set; }
+
+    private HubConnection hubConnection;
+    private List<Atendimento> _atendimentos { get; set; }
+    private List<Medico> _medico { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _atendimentos = await AppDbContext
+            .Atendimento
+            .Where(c => c.Atendido==false)
+            .OrderBy(c=>c.Prioridade).ToListAsync();
+
+        hubConnection = new HubConnectionBuilder()
+            .WithUrl(NavigationManager.ToAbsoluteUri("/serverHub"))
+            .Build();
+
+        await hubConnection.StartAsync();
+
+        hubConnection.On("ReceiveMessage", () =>
+        {
+            LoadData();
+            StateHasChanged();
+        });
+
+
+        LoadData();
+    }
+
+
+    protected async void LoadData()
+    {
+        _atendimentos = await AppDbContext
+            .Atendimento
+            .Where(c => c.Atendido==false)
+            .OrderBy(c=>c.Prioridade).ToListAsync();
+        
+        _medico = await AppDbContext.Medico.OrderBy(c => c.Id)
+            .Reverse()
+            .Include(c => c.Atendimento)
+            .ToListAsync();
+        
+        StateHasChanged();
+    }
+
+
+    public async ValueTask DisposeAsync()
+    {
+        if (hubConnection is not null)
+        {
+            await hubConnection.DisposeAsync();
+        }
+    }
+}

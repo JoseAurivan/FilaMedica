@@ -1,0 +1,68 @@
+@page "/counter"
+@using AtendimentoMedico.Data.AppContext
+@using AtendimentoMedico.Data
+@using Microsoft.AspNetCore.SignalR.Client
+@implements IAsyncDisposable
+
+<h1>Cadastro Atendimento</h1>
+
+<EditForm Model="_atendimento" OnValidSubmit="CriarAtendimento">
+    <div class="form-group mb-3">
+        <label for="nome">Nome</label>
+        <InputText @bind-Value="_atendimento.Nome" class="form-control"></InputText>
+        <label for="prioridade">Prioridade</label>
+        <InputSelect @bind-Value="_atendimento.Prioridade">
+            <option>P1</option>
+            <option>P2</option>
+            <option>P3</option>
+            <option>P4</option>
+        </InputSelect>
+    </div>
+    <DataAnnotationsValidator/>
+    <ValidationSummary/>
+    <button class="btn-success"  type="submit">Salvar</button>
+    <button class="btn-outline-danger"  @onclick="@(() => { NavigationManager.NavigateTo("/");})">Cancelar</button>
+</EditForm>
+
+
+
+
+@code
+{
+    [Inject] AppDbContext AppContext { get; set; }
+    [Inject] NavigationManager NavigationManager { get; set; }
+    private HubConnection HubConnection;
+    private Atendimento _atendimento = new Atendimento();
+    
+    
+    protected override async Task OnInitializedAsync()
+    {
+        HubConnection = new HubConnectionBuilder()
+            .WithUrl(NavigationManager.ToAbsoluteUri("/serverHub"))
+            .Build();
+        
+        await HubConnection.StartAsync();
+    }
+    
+    private async Task CriarAtendimento()
+    {
+        await AppContext.Atendimento.AddAsync(_atendimento);
+        await AppContext.SaveChangesAsync();
+        if(IsConnected) await SendMessage();
+        NavigationManager.NavigateTo("/");
+        
+    }
+    
+    public bool IsConnected => HubConnection.State == HubConnectionState.Connected;
+
+    Task SendMessage() => HubConnection.SendAsync("SendMessage");
+
+    public async ValueTask DisposeAsync()
+    {
+        if (HubConnection is not null)
+        {
+            await HubConnection.DisposeAsync();
+        }
+    }
+}
+
